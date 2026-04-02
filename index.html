@@ -484,7 +484,7 @@
 <body>
 
     <header>
-        <img src="header_logo.png" alt="Kingston Engineering College Logo" class="header-logo" onerror="this.style.display='none'; document.getElementById('fallback-header').style.display='block';">
+        <img src="https://engineering.kingston.ac.in/_next/image?url=%2F_next%2Fstatic%2Fmedia%2Fheader_logo.44adc926.png&w=3840&q=75" alt="Kingston Engineering College Logo" class="header-logo" onerror="this.style.display='none'; document.getElementById('fallback-header').style.display='block';">
         <h1 id="fallback-header" style="display: none; color: var(--primary-color);">KEC Library Miner</h1>
     </header>
 
@@ -557,12 +557,24 @@
 
         <!-- TAB 3: Access Logs -->
         <div id="tab-logs" class="tab-content">
-            <div class="controls">
-                <h2>Recent Access Logs</h2>
-                <button class="btn" onclick="fetchLogs()">
-                    <svg style="width:16px;height:16px;margin-right:8px;" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                    Refresh Logs
-                </button>
+            <div class="controls" style="flex-wrap: wrap; gap: 15px;">
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <h2>Recent Access Logs</h2>
+                    <button class="btn" onclick="fetchLogs()">
+                        <svg style="width:16px;height:16px;margin-right:8px;" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                        Refresh Logs
+                    </button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: #f9fafb; padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                    <label style="font-size: 13px; font-weight: 600; color: var(--text-color);">From:</label>
+                    <input type="date" id="logFromDate" class="form-control" style="padding: 8px; width: auto;">
+                    <label style="font-size: 13px; font-weight: 600; color: var(--text-color);">To:</label>
+                    <input type="date" id="logToDate" class="form-control" style="padding: 8px; width: auto;">
+                    <button class="btn" onclick="downloadLogsExcel()" style="background-color: #10b981;">
+                        <svg style="width:16px;height:16px;margin-right:6px;" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        Download Excel
+                    </button>
+                </div>
             </div>
 
             <div id="logsLoadingIndicator" class="hidden">
@@ -576,12 +588,12 @@
                 <table id="logsTable" class="hidden">
                     <thead>
                         <tr>
-                            <th>TIMESTAMP</th>
-                            <th>UID</th>
-                            <th>PROJECT TITLE</th>
-                            <th>START TIME</th>
-                            <th>END TIME</th>
-                            <th>NET TIME</th>
+                            <th onclick="handleLogSort('TIMESTAMP')">TIMESTAMP <span class="sort-icon" id="sort-log-TIMESTAMP"></span></th>
+                            <th onclick="handleLogSort('UID')">UID <span class="sort-icon" id="sort-log-UID"></span></th>
+                            <th onclick="handleLogSort('PROJECT_TITLE')">PROJECT TITLE <span class="sort-icon" id="sort-log-PROJECT_TITLE"></span></th>
+                            <th onclick="handleLogSort('START_TIME')">START TIME <span class="sort-icon" id="sort-log-START_TIME"></span></th>
+                            <th onclick="handleLogSort('END_TIME')">END TIME <span class="sort-icon" id="sort-log-END_TIME"></span></th>
+                            <th onclick="handleLogSort('NET_TIME')">NET TIME <span class="sort-icon" id="sort-log-NET_TIME"></span></th>
                         </tr>
                     </thead>
                     <tbody id="logsTableBody">
@@ -664,6 +676,11 @@
         let allData = [];
         let filteredData = [];
         let currentSort = { column: null, direction: 'asc' };
+        
+        let allLogsData = [];
+        let filteredLogsData = [];
+        let currentLogSort = { column: null, direction: 'asc' };
+
         let selectedProject = null;
         let pendingUploadData = null; // Stores parsed Excel data
 
@@ -870,27 +887,61 @@
         // ==========================================
         // 3. SUBMIT ACCESS LOG
         // ==========================================
+        // Helper to fetch true IST time from the internet bypassing local CPU clock
+        async function getInternetTimeIST() {
+            try {
+                const response = await fetch('https://worldtimeapi.org/api/timezone/Asia/Kolkata');
+                if (!response.ok) throw new Error("API Error");
+                const data = await response.json();
+                return new Date(data.datetime);
+            } catch (error) {
+                console.warn("Primary time API failed, trying fallback...");
+                try {
+                    const res = await fetch('https://timeapi.io/api/Time/current/zone?timeZone=Asia/Kolkata');
+                    if (!res.ok) throw new Error("Fallback API Error");
+                    const data = await res.json();
+                    return new Date(data.dateTime);
+                } catch (err) {
+                    console.error("All time APIs failed. Falling back to local device time.");
+                    return new Date(); // ultimate fallback if offline
+                }
+            }
+        }
+
         async function submitAccess(event) {
             event.preventDefault();
             const btn = document.getElementById('submitBtn');
             btn.disabled = true;
-            btn.textContent = 'Processing...';
+            btn.textContent = 'Fetching Time...';
 
             // Force UpperCase on UID
             const uid = document.getElementById('uidInput').value.trim().toUpperCase();
             const timeOption = document.querySelector('input[name="timeOption"]:checked').value;
             
-            let startDateTime = timeOption === 'now' ? new Date() : new Date(document.getElementById('customDateTime').value);
+            let startDateTime;
+            if (timeOption === 'now') {
+                startDateTime = await getInternetTimeIST();
+            } else {
+                startDateTime = new Date(document.getElementById('customDateTime').value);
+            }
+
+            btn.textContent = 'Processing...';
+
             const randomSeconds = Math.floor(Math.random() * (3000 - 1800 + 1)) + 1800;
             const endDateTime = new Date(startDateTime.getTime() + (randomSeconds * 1000));
             const netTimeMinutes = Math.round(randomSeconds / 60);
+
+            // Format dates explicitly to IST (GMT+5:30) regardless of local machine settings
+            const dateOptions = { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true };
+            const startTimeStr = startDateTime.toLocaleString('en-IN', dateOptions);
+            const endTimeStr = endDateTime.toLocaleString('en-IN', dateOptions);
 
             const payload = {
                 action: "logAccess",
                 uid: uid,
                 projectTitle: selectedProject.PROJECT_TITLE,
-                startTime: startDateTime.toLocaleString(),
-                endTime: endDateTime.toLocaleString(),
+                startTime: startTimeStr,
+                endTime: endTimeStr,
                 netTime: `${netTimeMinutes} mins (${randomSeconds} sec)`
             };
 
@@ -1013,13 +1064,11 @@
         async function fetchLogs() {
             const loading = document.getElementById('logsLoadingIndicator');
             const table = document.getElementById('logsTable');
-            const tbody = document.getElementById('logsTableBody');
             const messageBox = document.getElementById('logsMessageBox');
             
             loading.classList.remove('hidden');
             table.classList.add('hidden');
             messageBox.classList.add('hidden');
-            tbody.innerHTML = '';
 
             try {
                 if (GAS_URL === "YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL_HERE" || GAS_URL.includes("/library/")) {
@@ -1035,25 +1084,17 @@
                 
                 const data = await response.json();
                 
-                if(data.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 20px;">No access logs found.</td></tr>`;
-                } else {
-                    // Assuming data returns the exact columns stored in backend
-                    // Default Backend keys: TIMESTAMP, UID, PROJECT_TITLE, START_TIME, END_TIME, NET_TIME
-                    // We map over keys dynamically based on the first object to ensure it catches whatever Google returns
-                    data.forEach(row => {
-                        const tr = document.createElement('tr');
-                        tr.innerHTML = `
-                            <td>${row.TIMESTAMP || ''}</td>
-                            <td style="font-weight:600; color:var(--primary-color)">${row.UID || ''}</td>
-                            <td>${row.PROJECT_TITLE || ''}</td>
-                            <td>${row.START_TIME || ''}</td>
-                            <td>${row.END_TIME || ''}</td>
-                            <td>${row.NET_TIME || ''}</td>
-                        `;
-                        tbody.appendChild(tr);
-                    });
-                }
+                // Set the Timestamp equal to the Start Time to fulfill the requirement
+                data.forEach(row => {
+                    if (row.START_TIME) {
+                        row.TIMESTAMP = row.START_TIME;
+                    }
+                });
+                
+                allLogsData = data;
+                filteredLogsData = [...data];
+                
+                renderLogsTable();
                 
                 loading.classList.add('hidden');
                 table.classList.remove('hidden');
@@ -1063,6 +1104,128 @@
                 messageBox.innerHTML = `Failed to load logs. Ensure your Google Apps Script is updated with the new code to support logs.`;
                 messageBox.classList.remove('hidden');
                 loading.classList.add('hidden');
+            }
+        }
+
+        function renderLogsTable() {
+            const tbody = document.getElementById('logsTableBody');
+            tbody.innerHTML = '';
+
+            if(filteredLogsData.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 20px;">No access logs found.</td></tr>`;
+            } else {
+                filteredLogsData.forEach(row => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${row.TIMESTAMP || ''}</td>
+                        <td style="font-weight:600; color:var(--primary-color)">${row.UID || ''}</td>
+                        <td>${row.PROJECT_TITLE || ''}</td>
+                        <td>${row.START_TIME || ''}</td>
+                        <td>${row.END_TIME || ''}</td>
+                        <td>${row.NET_TIME || ''}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+        }
+
+        // Logs Sorting Logic
+        function handleLogSort(column) {
+            if (currentLogSort.column === column) {
+                currentLogSort.direction = currentLogSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentLogSort.column = column;
+                currentLogSort.direction = 'asc';
+            }
+
+            document.querySelectorAll('[id^="sort-log-"]').forEach(icon => icon.textContent = '');
+            const iconEl = document.getElementById(`sort-log-${column}`);
+            if (iconEl) iconEl.textContent = currentLogSort.direction === 'asc' ? ' ▲' : ' ▼';
+
+            sortLogsArray(currentLogSort.column, currentLogSort.direction);
+            renderLogsTable();
+        }
+
+        function sortLogsArray(col, dir) {
+            filteredLogsData.sort((a, b) => {
+                let valA = a[col] !== undefined && a[col] !== null ? a[col] : '';
+                let valB = b[col] !== undefined && b[col] !== null ? b[col] : '';
+
+                // Specifically handle dates for TIMESTAMP, START_TIME, END_TIME
+                if (col === 'TIMESTAMP' || col === 'START_TIME' || col === 'END_TIME') {
+                    const dateA = new Date(valA).getTime();
+                    const dateB = new Date(valB).getTime();
+                    if (!isNaN(dateA) && !isNaN(dateB)) {
+                        return dir === 'asc' ? dateA - dateB : dateB - dateA;
+                    }
+                }
+
+                if (!isNaN(valA) && !isNaN(valB) && valA !== '' && valB !== '') {
+                    valA = Number(valA); valB = Number(valB);
+                } else {
+                    valA = String(valA).toLowerCase(); valB = String(valB).toLowerCase();
+                }
+
+                if (valA < valB) return dir === 'asc' ? -1 : 1;
+                if (valA > valB) return dir === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+
+        // Excel Download Logic
+        function downloadLogsExcel() {
+            if (allLogsData.length === 0) {
+                alert("No logs available to download. Please fetch the logs first.");
+                return;
+            }
+
+            const fromDateStr = document.getElementById('logFromDate').value;
+            const toDateStr = document.getElementById('logToDate').value;
+
+            let exportData = allLogsData;
+
+            if (fromDateStr || toDateStr) {
+                exportData = allLogsData.filter(row => {
+                    if (!row.TIMESTAMP) return false;
+                    const logDate = new Date(row.TIMESTAMP);
+                    if (isNaN(logDate.getTime())) return true; // Include rows with invalid dates so they aren't lost
+                    
+                    let isValid = true;
+                    if (fromDateStr) {
+                        const fromDate = new Date(fromDateStr);
+                        fromDate.setHours(0, 0, 0, 0);
+                        if (logDate < fromDate) isValid = false;
+                    }
+                    if (toDateStr) {
+                        const toDate = new Date(toDateStr);
+                        toDate.setHours(23, 59, 59, 999);
+                        if (logDate > toDate) isValid = false;
+                    }
+                    return isValid;
+                });
+            }
+
+            if (exportData.length === 0) {
+                alert("No logs found in the selected date range.");
+                return;
+            }
+
+            try {
+                const ws = XLSX.utils.json_to_sheet(exportData);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Access Logs");
+                
+                // Format filename with date
+                const today = new Date().toISOString().split('T')[0];
+                let filename = `KEC_Access_Logs_${today}.xlsx`;
+                if (fromDateStr && toDateStr) {
+                    filename = `KEC_Access_Logs_${fromDateStr}_to_${toDateStr}.xlsx`;
+                }
+
+                XLSX.writeFile(wb, filename);
+            } catch (error) {
+                console.error("Excel generation error:", error);
+                alert("An error occurred while generating the Excel file.");
             }
         }
     </script>
